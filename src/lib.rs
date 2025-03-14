@@ -115,7 +115,6 @@ impl Default for MenuProps<'_> {
 /// let mut nested_menu = Menu::new(vec![], MenuProps::default());
 /// let show_nested = MenuOption::new("show nested menu", move || nested_menu.show());
 /// ```
-
 pub struct MenuOption {
     pub label: String,
     pub action: Box<dyn FnMut()>,
@@ -184,7 +183,7 @@ impl Menu {
         let items_per_page = clamp(items_per_page, 1, items.len());
         let num_pages = ((items.len() - 1) / items_per_page) + 1;
 
-        let mut max_width = (&items).iter().fold(0, |max, item| {
+        let mut max_width = items.iter().fold(0, |max, item| {
             let label_len = item.label.len();
             if label_len > max { label_len } else { max }
         });
@@ -193,20 +192,12 @@ impl Menu {
         }
         if props.message.len() > max_width {
             max_width = props.message.len()
-        }  
+        }
 
         let mut menu = Self {
             items,
-            title: if props.title.len() > 0 {
-                Some(props.title.to_owned())
-            } else {
-                None
-            },
-            message: if props.message.len() > 0 {
-                Some(props.message.to_owned())
-            } else {
-                None
-            },
+            title: (!props.title.is_empty()).then(|| props.title.to_owned()),
+            message: (!props.message.is_empty()).then(|| props.title.to_owned()),
             exit_on_action: props.exit_on_action,
             bg_color: props.bg_color,
             fg_color: props.fg_color,
@@ -275,9 +266,8 @@ impl Menu {
                         self.exit(stdout);
                         (self.items[self.selected_item].action)();
                         break;
-                    } else {
-                        (self.items[self.selected_item].action)();
-                    }    
+                    }
+                    (self.items[self.selected_item].action)();
                 }
                 _ => {}
             }
