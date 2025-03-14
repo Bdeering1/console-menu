@@ -156,7 +156,7 @@ impl Default for MenuOption {
 /// menu.show();
 /// ```
 pub struct Menu {
-    items: Vec<MenuOption>,
+    options: Vec<MenuOption>,
     title: Option<String>,
     message: Option<String>,
     exit_on_action: bool,
@@ -165,9 +165,9 @@ pub struct Menu {
     title_color: u8,
     selected_color: u8,
     msg_color: u8,
-    selected_item: usize,
+    selected_option: usize,
     selected_page: usize,
-    items_per_page: usize,
+    options_per_page: usize,
     num_pages: usize,
     page_start: usize,
     page_end: usize,
@@ -175,16 +175,15 @@ pub struct Menu {
 }
 
 impl Menu {
-    pub fn new(items: Vec<MenuOption>, props: MenuProps) -> Self {
-        let mut items = items;
-        if items.len() == 0 { items.push(MenuOption::default()) }
+    pub fn new(options: Vec<MenuOption>, props: MenuProps) -> Self {
+        assert!(!options.is_empty(), "Menu options cannot be empty!");
 
-        let items_per_page: usize = (Term::stdout().size().0 - 6) as usize;
-        let items_per_page = clamp(items_per_page, 1, items.len());
-        let num_pages = ((items.len() - 1) / items_per_page) + 1;
+        let options_per_page: usize = (Term::stdout().size().0 - 6) as usize;
+        let options_per_page = clamp(options_per_page, 1, options.len());
+        let num_pages = ((options.len() - 1) / options_per_page) + 1;
 
-        let mut max_width = items.iter().fold(0, |max, item| {
-            let label_len = item.label.len();
+        let mut max_width = options.iter().fold(0, |max, option| {
+            let label_len = option.label.len();
             if label_len > max { label_len } else { max }
         });
         if props.title.len() > max_width {
@@ -195,7 +194,7 @@ impl Menu {
         }
 
         let mut menu = Self {
-            items,
+            options,
             title: (!props.title.is_empty()).then(|| props.title.to_owned()),
             message: (!props.message.is_empty()).then(|| props.title.to_owned()),
             exit_on_action: props.exit_on_action,
@@ -204,9 +203,9 @@ impl Menu {
             title_color: props.title_color.unwrap_or(props.fg_color),
             selected_color: props.selected_color.unwrap_or(props.fg_color),
             msg_color: props.msg_color.unwrap_or(props.fg_color),
-            selected_item: 0,
+            selected_option: 0,
             selected_page: 0,
-            items_per_page,
+            options_per_page,
             num_pages,
             page_start: 0,
             page_end: 0,
@@ -233,16 +232,16 @@ impl Menu {
 
             match key {
                 Key::ArrowUp | Key::Char('k') => {
-                    if self.selected_item != self.page_start {
-                        self.selected_item -= 1;
+                    if self.selected_option != self.page_start {
+                        self.selected_option -= 1;
                     } else if self.selected_page != 0 {
                         self.set_page(self.selected_page - 1);
-                        self.selected_item = self.page_end;
+                        self.selected_option = self.page_end;
                     }
                 }
                 Key::ArrowDown | Key::Char('j') => {
-                    if self.selected_item < self.page_end {
-                        self.selected_item += 1
+                    if self.selected_option < self.page_end {
+                        self.selected_option += 1
                     } else if self.selected_page < self.num_pages - 1 {
                         self.set_page(self.selected_page + 1);
                     }
@@ -264,10 +263,10 @@ impl Menu {
                 Key::Enter => {
                     if self.exit_on_action {
                         self.exit(stdout);
-                        (self.items[self.selected_item].action)();
+                        (self.options[self.selected_option].action)();
                         break;
                     }
-                    (self.items[self.selected_item].action)();
+                    (self.options[self.selected_option].action)();
                 }
                 _ => {}
             }
@@ -278,12 +277,12 @@ impl Menu {
 
     fn set_page(&mut self, page: usize) {
         self.selected_page = page;
-        self.page_start = self.selected_page * self.items_per_page;
-        self.selected_item = self.page_start;
-        if self.items.len() > self.page_start + self.items_per_page {
-            self.page_end = self.page_start + self.items_per_page - 1
+        self.page_start = self.selected_page * self.options_per_page;
+        self.selected_option = self.page_start;
+        if self.options.len() > self.page_start + self.options_per_page {
+            self.page_end = self.page_start + self.options_per_page - 1
         } else {
-            self.page_end = self.items.len() - 1
+            self.page_end = self.options.len() - 1
         }
     }
 
@@ -302,7 +301,7 @@ impl Menu {
         let indent: usize = (stdout.size().1 / 2) as usize - ((menu_width + 4) / 2);
         let indent_str = pad_left("".to_string(), indent);
 
-        let vertical_pad: usize = (stdout.size().0 / 2) as usize  - ((self.items_per_page + extra_lines) / 2);
+        let vertical_pad: usize = (stdout.size().0 / 2) as usize  - ((self.options_per_page + extra_lines) / 2);
         stdout.write_str(&format!("{:\n<width$}", "", width=vertical_pad)).unwrap();
 
         stdout.write_str(&format!("\x1b[38;5;{}m", self.fg_color)).unwrap(); // set foreground color
@@ -315,15 +314,15 @@ impl Menu {
             stdout.write_line(&format!("{}{}", indent_str, self.apply_bg("", menu_width))).unwrap();
         } 
 
-        for (i, option) in self.items[self.page_start..=self.page_end].iter().enumerate() {
-            let item_str = if self.page_start + i == self.selected_item {
+        for (i, option) in self.options[self.page_start..=self.page_end].iter().enumerate() {
+            let option_str = if self.page_start + i == self.selected_option {
                 ansi_width = 25 + num_digs(self.fg_color) + num_digs(self.selected_color);
                 format!("{}", self.switch_fg(&self.apply_bold(&option.label), self.selected_color))
             } else {
                 ansi_width = 0;
                 format!("{}", option.label)
             };
-            stdout.write_line(&format!("{}{}", indent_str, self.apply_bg(&item_str, menu_width + ansi_width))).unwrap();
+            stdout.write_line(&format!("{}{}", indent_str, self.apply_bg(&option_str, menu_width + ansi_width))).unwrap();
         }
 
         if self.num_pages > 1 {
