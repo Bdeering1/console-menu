@@ -62,11 +62,11 @@ pub struct MenuProps<'a> {
     /// Display below the list of menu options. Pass an empty string for no message.
     pub message: &'a str,
     /// If true, menu will exit immediately upon an option being selected.
-    pub exit_on_action: bool,
-    /// The background color for the menu.
-    pub bg_color: u8,
+    pub exit_by_default: bool,
     /// The foreground (text) color for the menu.
     pub fg_color: u8,
+    /// The background color for the menu.
+    pub bg_color: Option<u8>,
     /// Optional color for the title. If None, the foreground color will be used.
     pub title_color: Option<u8>,
     /// Optional color for the selected menu option. If None, the foreground color will be used.
@@ -81,7 +81,7 @@ pub struct MenuProps<'a> {
 /// MenuProps {
 ///     title: "",
 ///     message: "",
-///     exit_on_action: true,
+///     exit_by_default: true,
 ///     bg_color: 8,
 ///     fg_color: 15,
 ///     title_color: None,
@@ -95,9 +95,9 @@ impl Default for MenuProps<'_> {
         MenuProps {
             title: "",
             message: "",
-            exit_on_action: true,
-            bg_color: 8,
+            exit_by_default: true,
             fg_color: 15,
+            bg_color: Some(8),
             title_color: None,
             selected_color: None,
             msg_color: Some(7),
@@ -159,9 +159,9 @@ pub struct Menu {
     options: Vec<MenuOption>,
     title: Option<String>,
     message: Option<String>,
-    exit_on_action: bool,
-    bg_color: u8,
+    exit_by_default: bool,
     fg_color: u8,
+    bg_color: Option<u8>,
     title_color: u8,
     selected_color: u8,
     msg_color: u8,
@@ -196,8 +196,8 @@ impl Menu {
         let mut menu = Self {
             options,
             title: (!props.title.is_empty()).then(|| props.title.to_owned()),
-            message: (!props.message.is_empty()).then(|| props.title.to_owned()),
-            exit_on_action: props.exit_on_action,
+            message: (!props.message.is_empty()).then(|| props.message.to_owned()),
+            exit_by_default: props.exit_by_default,
             bg_color: props.bg_color,
             fg_color: props.fg_color,
             title_color: props.title_color.unwrap_or(props.fg_color),
@@ -261,7 +261,7 @@ impl Menu {
                     break;
                 }
                 Key::Enter => {
-                    if self.exit_on_action {
+                    if self.exit_by_default {
                         self.exit(stdout);
                         (self.options[self.selected_option].action)();
                         break;
@@ -349,7 +349,11 @@ impl Menu {
     }
 
     fn apply_bg(&self, s: &str, width: usize) -> String {
-        format!("\x1b[48;5;{}m{}\x1b[49m", self.bg_color, pad_right(format!("  {}", s), width + 4)) 
+        if let Some(color) = self.bg_color {
+            format!("\x1b[48;5;{}m{}\x1b[49m", color, pad_right(format!("  {}", s), width + 4))
+        } else {
+            pad_right(format!("  {}", s), width + 4)
+        }
     }
 
 
