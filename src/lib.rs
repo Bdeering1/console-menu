@@ -230,11 +230,6 @@ impl Menu {
         loop {
             let key = match stdout.read_key() {
                 Ok(key) => key,
-                // A read error (e.g. stdin is not a TTY, or was closed/redirected)
-                // used to `unwrap` here and panic, taking down the whole program
-                // mid-menu. Restore the terminal and leave the menu cleanly
-                // instead — the same exit path Escape uses. (Ctrl-C is handled by
-                // `console` itself, which raises SIGINT.)
                 Err(_) => {
                     self.exit(stdout);
                     break;
