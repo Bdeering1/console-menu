@@ -228,7 +228,13 @@ impl Menu {
 
     fn run_navigation(&mut self, stdout: &Term) {
         loop {
-            let key = stdout.read_key().unwrap();
+            let key = match stdout.read_key() {
+                Ok(key) => key,
+                Err(_) => {
+                    self.exit(stdout);
+                    break;
+                }
+            };
 
             match key {
                 Key::ArrowUp | Key::Char('k') => {
