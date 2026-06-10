@@ -217,10 +217,8 @@ impl Menu {
 
     pub fn show(&mut self) {
         let stdout = Term::buffered_stdout();
+        stdout.write_str("\x1b[?1049h").unwrap(); // enter alternate screen buffer
         stdout.hide_cursor().unwrap();
-
-        let term_height = Term::stdout().size().0 as usize;
-        stdout.write_str(&"\n".repeat(term_height - 1)).unwrap();
 
         self.draw(&stdout);
         self.run_navigation(&stdout);
@@ -364,8 +362,8 @@ impl Menu {
 
 
     fn exit(&self, stdout: &Term) {
-        clear_screen(stdout);
         stdout.show_cursor().unwrap();
+        stdout.write_str("\x1b[?1049l").unwrap(); // leave alternate screen buffer
         stdout.flush().unwrap();
     }
 }
