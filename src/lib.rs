@@ -216,22 +216,23 @@ impl Menu {
     }
 
     pub fn show(&mut self) {
-        let stdout = Term::buffered_stdout();
-        stdout.write_str("\x1b[?1049h").unwrap(); // enter alternate screen buffer
-        stdout.hide_cursor().unwrap();
-
-        self.draw(&stdout);
-        self.run_navigation(&stdout);
+        if let Some(idx) = self.run_session() {
+            (self.options[idx].action)();
+        }
     }
 
-    fn run_navigation(&mut self, stdout: &Term) {
+    fn run_session(&mut self) -> Option<usize> {
+        let stdout = Term::buffered_stdout();
+        let _session = MenuSession::new(&stdout);
+        self.draw(&stdout);
+        self.run_navigation(&stdout)
+    }
+
+    fn run_navigation(&mut self, stdout: &Term) -> Option<usize> {
         loop {
             let key = match stdout.read_key() {
                 Ok(key) => key,
-                Err(_) => {
-                    self.exit(stdout);
-                    break;
-                }
+                Err(_) => return None,
             };
 
             match key {
@@ -260,18 +261,13 @@ impl Menu {
                         self.set_page(self.selected_page + 1);
                     }
                 }
-                Key::Escape | Key::Char('q') | Key::Backspace => {
-                    self.exit(stdout);
-                    break;
-                }
                 Key::Enter => {
                     if self.exit_by_default {
-                        self.exit(stdout);
-                        (self.options[self.selected_option].action)();
-                        break;
+                        return Some(self.selected_option);
                     }
                     (self.options[self.selected_option].action)();
                 }
+                Key::Escape | Key::Char('q') | Key::Backspace => return None,
                 _ => {}
             }
 
@@ -361,10 +357,25 @@ impl Menu {
     }
 
 
-    fn exit(&self, stdout: &Term) {
-        stdout.show_cursor().unwrap();
-        stdout.write_str("\x1b[?1049l").unwrap(); // leave alternate screen buffer
-        stdout.flush().unwrap();
+}
+
+struct MenuSession<'a> {
+    term: &'a Term,
+}
+
+impl<'a> MenuSession<'a> {
+    fn new(term: &'a Term) -> Self {
+        term.write_str("\x1b[?1049h").unwrap(); // enter alternate screen buffer
+        term.hide_cursor().unwrap();
+        Self { term }
+    }
+}
+
+impl Drop for MenuSession<'_> {
+    fn drop(&mut self) {
+        let _ = self.term.show_cursor();
+        let _ = self.term.write_str("\x1b[?1049l"); // leave alternate screen buffer
+        let _ = self.term.flush();
     }
 }
 
