@@ -361,18 +361,26 @@ impl Menu {
 
 struct MenuSession<'a> {
     term: &'a Term,
+    #[cfg(unix)]
+    listener: Option<signal::Listener>,
 }
 
 impl<'a> MenuSession<'a> {
     fn new(term: &'a Term) -> Self {
         term.write_str("\x1b[?1049h").unwrap(); // enter alternate screen buffer
         term.hide_cursor().unwrap();
-        Self { term }
+        Self {
+            term,
+            #[cfg(unix)]
+            listener: signal::install(),
+        }
     }
 }
 
 impl Drop for MenuSession<'_> {
     fn drop(&mut self) {
+        #[cfg(unix)]
+        signal::uninstall(self.listener.take());
         let _ = self.term.show_cursor();
         let _ = self.term.write_str("\x1b[?1049l"); // leave alternate screen buffer
         let _ = self.term.flush();
@@ -399,4 +407,63 @@ fn clamp(num: usize, min: usize, max: usize) -> usize {
 
 fn num_digs(num: u8) -> usize {
     (num.checked_ilog10().unwrap_or(0) + 1) as usize
+}
+
+
+#[cfg(unix)]
+mod signal {
+    use std::io::{self, Write};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::thread::{self, JoinHandle};
+
+    use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
+    use signal_hook::iterator::{Handle, Signals};
+    use signal_hook::low_level;
+
+    const RESTORE_BYTES: &[u8] = b"\x1b[?25h\x1b[?1049l";
+    const SIGNALS: &[i32] = &[SIGINT, SIGHUP, SIGTERM, SIGQUIT];
+
+    static SESSION_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+    pub struct Listener {
+        handle: Handle,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    pub fn install() -> Option<Listener> {
+        if SESSION_ACTIVE.swap(true, Ordering::SeqCst) {
+            return None; // nested session
+        }
+
+        let mut signals = match Signals::new(SIGNALS) {
+            Ok(s) => s,
+            Err(_) => {
+                SESSION_ACTIVE.store(false, Ordering::SeqCst);
+                return None;
+            }
+        };
+        let handle = signals.handle();
+
+        let thread = thread::spawn(move || {
+            for signum in &mut signals {
+                let mut out = io::stdout().lock();
+                let _ = out.write_all(RESTORE_BYTES);
+                let _ = out.flush();
+                let _ = low_level::emulate_default_handler(signum);
+                break;
+            }
+        });
+
+        Some(Listener { handle, thread: Some(thread) })
+    }
+
+    pub fn uninstall(listener: Option<Listener>) {
+        let Some(mut listener) = listener else { return };
+
+        listener.handle.close();
+        if let Some(t) = listener.thread.take() {
+            let _ = t.join();
+        }
+        SESSION_ACTIVE.store(false, Ordering::SeqCst);
+    }
 }
