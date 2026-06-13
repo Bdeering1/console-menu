@@ -14,8 +14,9 @@
 //! menu.show();
 //! ```
 //!
-//! Menus can include a title, footer message, and any combination of [8-bit](https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit)
-//! colored backgrounds and text by configuring `MenuProps`. Menus that don't fit the console window are paginated.
+//! Menus can include a title, footer message, and any combination of
+//! [8-bit](https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit) colored backgrounds and text
+//! by configuring `MenuProps`. Menus that don't fit the console window are paginated.
 //!
 //! Menu controls are as follows:
 //! 
@@ -24,6 +25,14 @@
 //! | ↓, ↑, ←, →, h, j, k, l | make selection        |
 //! | enter    | confirm     |
 //! | esc, q   | exit        |
+//!
+//! ## Platform support
+//!
+//! Menus use an alternate screen buffer, and the terminal is restored upon an exit or panic in
+//! the menu loop. On Unix `SIGINT`, `SIGHUP`, `SIGTERM`, and `SIGQUIT` are caught, the terminal
+//! is restored, and the signal is re-raised. On Windows, abnormal termination may leave the
+//! cursor hidden or the terminal in the alternate screen buffer (depending on the shell).
+
 
 use console::{Key, Term};
 
@@ -175,6 +184,9 @@ pub struct Menu {
 }
 
 impl Menu {
+    /// Construct a new menu from a list of options and a `MenuProps`.
+    ///
+    /// Panics if `options` is empty.
     pub fn new(options: Vec<MenuOption>, props: MenuProps) -> Self {
         assert!(!options.is_empty(), "Menu options cannot be empty!");
 
@@ -215,6 +227,10 @@ impl Menu {
         menu
     }
 
+    /// Display the menu and block until the user makes a selection or exits.
+    ///
+    /// The menu hides the cursor and renders on an alternate screen buffer. The cursor and
+    /// screen buffer are restored on menu exit, panic, or (on Unix) fatal signals.
     pub fn show(&mut self) {
         if let Some(idx) = self.run_session() {
             (self.options[idx].action)();
@@ -426,7 +442,7 @@ mod signal {
     static SESSION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
     pub struct Listener {
-        handle: Handle,
+        signals_handle: Handle,
         thread: Option<JoinHandle<()>>,
     }
 
@@ -454,13 +470,13 @@ mod signal {
             }
         });
 
-        Some(Listener { handle, thread: Some(thread) })
+        Some(Listener { signals_handle: handle, thread: Some(thread) })
     }
 
     pub fn uninstall(listener: Option<Listener>) {
         let Some(mut listener) = listener else { return };
 
-        listener.handle.close();
+        listener.signals_handle.close();
         if let Some(t) = listener.thread.take() {
             let _ = t.join();
         }
